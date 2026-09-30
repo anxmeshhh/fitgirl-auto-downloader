@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FitGrab — FitGirl Repack Downloader</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="bg-grid"></div>
+    <div class="glow glow-1"></div>
+    <div class="glow glow-2"></div>
+
+    <div class="container">
+        <header class="header">
+            <div class="logo">
+                <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                <h1>FitGrab</h1>
+            </div>
+            <p class="tagline">Bulk download FitGirl repacks at maximum speed</p>
+        </header>
+
+        <!-- Network Status Bar -->
+        <div class="network-bar" id="network-bar">
+            <div class="net-status">
+                <span class="net-dot connected" id="net-dot"></span>
+                <span id="net-label">Connected</span>
+            </div>
+            <div class="net-speed">
+                <span class="net-speed-label">Network</span>
+                <span class="net-speed-value" id="net-speed-val">0 B/s</span>
+            </div>
+        </div>
+
+        <!-- Input Section -->
+        <section class="card" id="input-section">
+            <div class="card-header">
+                <div class="step-badge">1</div>
+                <h2>Paste Link</h2>
+            </div>
+            <div class="input-group">
+                <label for="paste-url">FitGirl Paste URL</label>
+                <input type="url" id="paste-url" placeholder="https://paste.fitgirl-repacks.site/?xxxxx#yyyyy">
+            </div>
+            <div class="input-group">
+                <label for="download-dir">Download Location</label>
+                <input type="text" id="download-dir" placeholder="C:\Users\YourName\Downloads\GameName">
+            </div>
+            <button class="btn btn-primary" id="fetch-btn" onclick="fetchLinks()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                Fetch Links
+            </button>
+            <div id="fetch-status" class="status-msg hidden"></div>
+        </section>
+
+        <!-- Files Section -->
+        <section class="card hidden" id="files-section">
+            <div class="card-header">
+                <div class="step-badge">2</div>
+                <h2>Select Files</h2>
+                <div class="file-controls">
+                    <button class="btn btn-ghost btn-sm" onclick="selectAll()">Select All</button>
+                    <button class="btn btn-ghost btn-sm" onclick="deselectAll()">Deselect All</button>
+                </div>
+            </div>
+            <div class="files-list" id="files-list"></div>
+            <div class="card-footer">
+                <span class="selected-count" id="selected-count">0 files selected</span>
+                <button class="btn btn-primary" id="download-btn" onclick="startDownload()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Start Download
+                </button>
+            </div>
+        </section>
+
+        <!-- Speed Graph Section -->
+        <section class="card hidden" id="graph-section">
+            <div class="card-header">
+                <div class="step-badge graph-badge">⚡</div>
+                <h2>Download Speed</h2>
+                <div class="graph-stats">
+                    <div class="graph-stat">
+                        <span class="graph-stat-label">Current</span>
+                        <span class="graph-stat-value" id="graph-current">0 B/s</span>
+                    </div>
+                    <div class="graph-stat">
+                        <span class="graph-stat-label">Peak</span>
+                        <span class="graph-stat-value" id="graph-peak">0 B/s</span>
+                    </div>
+                    <div class="graph-stat">
+                        <span class="graph-stat-label">Avg</span>
+                        <span class="graph-stat-value" id="graph-avg">0 B/s</span>
+                    </div>
+                </div>
+            </div>
+            <div class="graph-container">
+                <canvas id="speed-canvas" width="720" height="180"></canvas>
+            </div>
+        </section>
+
+        <!-- Progress Section -->
+        <section class="card hidden" id="progress-section">
+            <div class="card-header">
+                <div class="step-badge">3</div>
+                <h2>Download Progress</h2>
+                <button class="btn btn-danger btn-sm" id="cancel-btn" onclick="cancelDownload()">Cancel All</button>
+            </div>
+            <div class="progress-list" id="progress-list"></div>
+            <div class="overall-status" id="overall-status"></div>
+        </section>
+    </div>
+
+<script>
+let fetchedFiles = [], currentSessionId = null, progressInterval = null, networkInterval = null, currentPasteUrl = '';
+let speedHistory = [], peakSpeed = 0;
+
+// ─── Speed Graph ───
+class SpeedGraph {
+    constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext('2d');
+        this.data = [];
+        this.max = 120;
+        this.dpr = window.devicePixelRatio || 1;
+        this.resize();
+        window.addEventListener('resize', () => this.resize());
+    }
+    resize() {
+        const rect = this.canvas.parentElement.getBoundingClientRect();
+        this.canvas.width = rect.width * this.dpr;
+        this.canvas.height = 180 * this.dpr;
+        this.canvas.style.width = rect.width + 'px';
+        this.canvas.style.height = '180px';
+        this.ctx.scale(this.dpr, this.dpr);
+        this.w = rect.width;
+        this.h = 180;
+        this.draw();
+    }
+    push(speed) {
+        this.data.push(speed);
+        if (this.data.length > this.max) this.data.shift();
+        this.draw();
+    }
+    draw() {
+        const { ctx, w, h, data } = this;
+        ctx.clearRect(0, 0, w, h);
+        if (data.length < 2) return;
+        const pad = { t: 8, r: 8, b: 24, l: 56 };
+        const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
+        const maxV = Math.max(...data, 1024 * 100);
+
+        // Grid + labels
+        ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+        ctx.lineWidth = 1;
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.font = '10px JetBrains Mono';
+        ctx.textAlign = 'right';
+        for (let i = 0; i <= 4; i++) {
+            const y = pad.t + (ph / 4) * i;
+            ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+            ctx.fillText(fmtSpeed(maxV * (1 - i / 4)), pad.l - 6, y + 4);
+        }
+
+        // Gradient fill
+        const grd = ctx.createLinearGradient(0, pad.t, 0, h - pad.b);
+        grd.addColorStop(0, 'rgba(139,92,246,0.25)');
+        grd.addColorStop(1, 'rgba(139,92,246,0)');
+        ctx.beginPath();
+        for (let i = 0; i < data.length; i++) {
+            const x = pad.l + (i / (this.max - 1)) * pw;
+            const y = pad.t + ph * (1 - data[i] / maxV);
+            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        }
+        const lastX = pad.l + ((data.length - 1) / (this.max - 1)) * pw;
+        ctx.lineTo(lastX, h - pad.b); ctx.lineTo(pad.l, h - pad.b); ctx.closePath();
+        ctx.fillStyle = grd; ctx.fill();
+
+        // Line
+        ctx.beginPath();
+        for (let i = 0; i < data.length; i++) {
+            const x = pad.l + (i / (this.max - 1)) * pw;
+            const y = pad.t + ph * (1 - data[i] / maxV);
+            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = '#8b5cf6'; ctx.lineWidth = 2; ctx.stroke();
+
+        // Dot at end
+        const ly = pad.t + ph * (1 - data[data.length - 1] / maxV);
+        ctx.beginPath(); ctx.arc(lastX, ly, 4, 0, Math.PI * 2);
+        ctx.fillStyle = '#a78bfa'; ctx.fill();
+        ctx.beginPath(); ctx.arc(lastX, ly, 6, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(139,92,246,0.4)'; ctx.lineWidth = 2; ctx.stroke();
+
+        // Time label
+        ctx.fillStyle = 'rgba(255,255,255,0.2)';
+        ctx.font = '9px Inter'; ctx.textAlign = 'center';
+        ctx.fillText('2 min ago', pad.l + 20, h - 6);
+        ctx.fillText('now', w - pad.r - 10, h - 6);
+    }
+}
+
+let speedGraph = null;
+
+function fmtSpeed(bps) {
+    if (bps >= 1024**3) return (bps/1024**3).toFixed(1) + ' GB/s';
+    if (bps >= 1024**2) return (bps/1024**2).toFixed(1) + ' MB/s';
+    if (bps >= 1024) return (bps/1024).toFixed(1) + ' KB/s';
+    return Math.round(bps) + ' B/s';
+}
+
+// ─── Network Polling ───
+async function pollNetwork() {
+    try {
+        const r = await fetch('/api/network');
+        const d = await r.json();
+        const dot = document.getElementById('net-dot');
+        const label = document.getElementById('net-label');
+        const speedVal = document.getElementById('net-speed-val');
+
+        dot.className = 'net-dot ' + (d.connected ? 'connected' : 'disconnected');
+        label.textContent = d.connected ? 'Connected' : 'Disconnected';
+        label.className = d.connected ? '' : 'text-red';
+        speedVal.textContent = d.speed_str;
+
+        if (speedGraph && d.history && d.history.length) {
+            const latest = d.history[d.history.length - 1];
+            speedGraph.push(latest.s);
+            peakSpeed = Math.max(peakSpeed, latest.s);
+            const avg = speedGraph.data.reduce((a, b) => a + b, 0) / speedGraph.data.length;
+            document.getElementById('graph-current').textContent = fmtSpeed(latest.s);
+            document.getElementById('graph-peak').textContent = fmtSpeed(peakSpeed);
+            document.getElementById('graph-avg').textContent = fmtSpeed(avg);
+        }
+    } catch (e) {}
+}
+
+// ─── Fetch Links ───
+async function fetchLinks() {
+    const url = document.getElementById('paste-url').value.trim();
+    const status = document.getElementById('fetch-status');
+    const btn = document.getElementById('fetch-btn');
+    if (!url) { showStatus(status, 'Enter a paste URL', 'error'); return; }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Fetching & Decrypting...';
+    status.classList.add('hidden');
+
+    try {
+        const r = await fetch('/api/fetch-links', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ paste_url: url })
+        });
+        const d = await r.json();
+        if (d.success) {
+            fetchedFiles = d.files;
+            currentPasteUrl = url;
+            renderFiles();
+            document.getElementById('files-section').classList.remove('hidden');
+            showStatus(status, `Found ${d.files.length} files`, 'success');
+            document.getElementById('files-section').scrollIntoView({ behavior: 'smooth' });
+        } else {
+            showStatus(status, d.error, 'error');
+        }
+    } catch (e) {
+        showStatus(status, 'Network error: ' + e.message, 'error');
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Fetch Links';
+}
+
+function renderFiles() {
+    const c = document.getElementById('files-list');
+    c.innerHTML = '';
+    fetchedFiles.forEach((f, i) => {
+        const el = document.createElement('div');
+        el.className = 'file-item';
+        el.innerHTML = `
+            <label class="file-checkbox">
+                <input type="checkbox" checked data-index="${f.index}" onchange="updateCount()">
+                <span class="checkmark"></span>
+            </label>
+            <div class="file-info">
+                <span class="file-name">${esc(f.filename)}</span>
+                <span class="file-part">Part ${String(i+1).padStart(2,'0')}</span>
+            </div>`;
+        c.appendChild(el);
+    });
+    updateCount();
+}
+function updateCount() {
+    const n = document.querySelectorAll('#files-list input:checked').length;
+    document.getElementById('selected-count').textContent = `${n} file${n!==1?'s':''} selected`;
+}
+function selectAll() { document.querySelectorAll('#files-list input').forEach(c=>c.checked=true); updateCount(); }
+function deselectAll() { document.querySelectorAll('#files-list input').forEach(c=>c.checked=false); updateCount(); }
+
+// ─── Start Download ───
+async function startDownload() {
+    const dir = document.getElementById('download-dir').value.trim();
+    if (!dir) { alert('Specify download location'); return; }
+    const sel = [];
+    document.querySelectorAll('#files-list input:checked').forEach(c => sel.push(parseInt(c.dataset.index)));
+    if (!sel.length) { alert('Select at least one file'); return; }
+
+    const btn = document.getElementById('download-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Starting...';
+
+    try {
+        const r = await fetch('/api/start-download', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ paste_url: currentPasteUrl, selected: sel, download_dir: dir })
+        });
+        const d = await r.json();
+        if (d.success) {
+            currentSessionId = d.session_id;
+            document.getElementById('graph-section').classList.remove('hidden');
+            document.getElementById('progress-section').classList.remove('hidden');
+            if (!speedGraph) speedGraph = new SpeedGraph(document.getElementById('speed-canvas'));
+            peakSpeed = 0;
+            startPolling();
+            document.getElementById('graph-section').scrollIntoView({ behavior: 'smooth' });
+        } else { alert(d.error); }
+    } catch (e) { alert(e.message); }
+
+    btn.disabled = false;
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Start Download';
+}
+
+function startPolling() {
+    if (progressInterval) clearInterval(progressInterval);
+    if (!networkInterval) networkInterval = setInterval(pollNetwork, 1000);
+    progressInterval = setInterval(pollProgress, 800);
+    pollProgress();
+}
+
+async function pollProgress() {
+    if (!currentSessionId) return;
+    try {
+        const r = await fetch(`/api/progress/${currentSessionId}`);
+        const d = await r.json();
+        if (!d.success) return;
+        renderProgress(d);
+        if (d.overall_status === 'completed') {
+            clearInterval(progressInterval);
+            document.getElementById('cancel-btn').classList.add('hidden');
+            document.getElementById('overall-status').innerHTML = `
+                <div class="status-complete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="complete-icon">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                </svg> All downloads completed!</div>`;
+        }
+    } catch (e) {}
+}
+
+function renderProgress(data) {
+    const c = document.getElementById('progress-list');
+    c.innerHTML = '';
+    data.files.forEach(f => {
+        if (!f.selected) return;
+        const icons = {
+            queued: '⏳', extracting: '🔍', downloading: '⬇️', completed: '✅',
+            error: '❌', cancelled: '🚫', retrying: '🔄', paused_network: '📡',
+            merging: '🔗', reconnecting: '🔌'
+        };
+        const labels = {
+            queued: 'Queued', extracting: 'Extracting URL...', downloading: 'Downloading',
+            completed: 'Completed', error: 'Error', cancelled: 'Cancelled',
+            retrying: 'Resuming...', paused_network: 'Waiting for network...',
+            merging: 'Merging segments...', reconnecting: 'Reconnecting...'
+        };
+        const icon = icons[f.status] || '⏳';
+        const label = labels[f.status] || f.status;
+        const attemptBadge = f.attempt > 1 ? `<span class="attempt-badge">Attempt ${f.attempt}/${5}</span>` : '';
+        const segInfo = f.segments_total > 0 ? `<span class="seg-info">${f.segments_done}/${f.segments_total} segments</span>` : '';
+
+        const el = document.createElement('div');
+        el.className = `progress-item status-${f.status}`;
+        el.innerHTML = `
+            <div class="progress-header">
+                <span class="progress-filename">${esc(f.filename)}</span>
+                <div class="progress-meta">${attemptBadge}${segInfo}<span class="progress-status-label">${icon} ${label}</span></div>
+            </div>
+            <div class="progress-bar-container"><div class="progress-bar" style="width:${f.progress}%"></div></div>
+            <div class="progress-details">
+                <span>${f.downloaded_display} / ${f.total_display}</span>
+                <span>${f.speed_str}</span>
+                <span>ETA ${f.eta}</span>
+                <span>${f.progress}%</span>
+            </div>
+            ${f.error ? `<div class="progress-error">${esc(f.error)}</div>` : ''}`;
+        c.appendChild(el);
+    });
+}
+
+async function cancelDownload() {
+    if (!currentSessionId || !confirm('Cancel all downloads?')) return;
+    try {
+        await fetch(`/api/cancel/${currentSessionId}`, { method: 'POST' });
+        clearInterval(progressInterval);
+        document.getElementById('overall-status').innerHTML = '<div class="status-cancelled">Downloads cancelled</div>';
+    } catch (e) {}
+}
+
+function showStatus(el, msg, type) {
+    el.textContent = msg;
+    el.className = `status-msg status-${type}`;
+}
+function esc(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+
+// Start network monitoring immediately
+document.addEventListener('DOMContentLoaded', () => {
+    networkInterval = setInterval(pollNetwork, 1000);
+    pollNetwork();
+    document.getElementById('paste-url').addEventListener('keydown', e => { if (e.key === 'Enter') fetchLinks(); });
+});
+</script>
+</body>
+</html>
