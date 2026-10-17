@@ -12,3 +12,4 @@ ENV/
 *.seg*
 downloads/
 fitgirl_pw_*
+.pytest_cache/

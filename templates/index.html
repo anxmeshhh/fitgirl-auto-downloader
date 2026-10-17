@@ -3,128 +3,155 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FitGrab — FitGirl Repack Downloader</title>
+    <meta name="color-scheme" content="dark">
+    <title>FitGrab</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <div class="bg-grid"></div>
-    <div class="glow glow-1"></div>
-    <div class="glow glow-2"></div>
-
-    <div class="container">
-        <header class="header">
-            <div class="logo">
-                <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="7 10 12 15 17 10"/>
-                    <line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-                <h1>FitGrab</h1>
-            </div>
-            <p class="tagline">Bulk download FitGirl repacks at maximum speed</p>
-        </header>
-
-        <!-- Network Status Bar -->
-        <div class="network-bar" id="network-bar">
-            <div class="net-status">
-                <span class="net-dot connected" id="net-dot"></span>
-                <span id="net-label">Connected</span>
-            </div>
-            <div class="net-speed">
-                <span class="net-speed-label">Network</span>
-                <span class="net-speed-value" id="net-speed-val">0 B/s</span>
+    <header class="topbar">
+        <div class="shell topbar-inner">
+            <span class="brand">FitGrab</span>
+            <div class="net" id="net" data-state="online">
+                <span class="net-dot"></span>
+                <span id="net-label">Online</span>
+                <span class="net-sep"></span>
+                <span class="mono" id="net-speed">0 B/s</span>
             </div>
         </div>
+    </header>
 
-        <!-- Input Section -->
-        <section class="card" id="input-section">
-            <div class="card-header">
-                <div class="step-badge">1</div>
-                <h2>Paste Link</h2>
+    <main class="shell">
+        <div class="intro reveal">
+            <h1>Download repacks.</h1>
+            <p>Paste a link, choose the parts, and let it run. Interrupted downloads pick up where they stopped.</p>
+        </div>
+
+        <section class="section reveal" id="source">
+            <div class="section-head">
+                <span class="section-index">01</span>
+                <h2>Source</h2>
             </div>
-            <div class="input-group">
-                <label for="paste-url">FitGirl Paste URL</label>
-                <input type="url" id="paste-url" placeholder="https://paste.fitgirl-repacks.site/?xxxxx#yyyyy">
+            <label class="field">
+                <span class="field-label">Paste URL</span>
+                <input type="url" id="paste-url" placeholder="https://paste.fitgirl-repacks.site/?xxxxx#yyyyy" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="field">
+                <span class="field-label">Save to</span>
+                <input type="text" id="download-dir" placeholder="D:\Games\Name" autocomplete="off" spellcheck="false">
+            </label>
+            <div class="actions">
+                <button class="btn btn-primary" id="fetch-btn"><span>Fetch links</span></button>
+                <p class="msg" id="source-msg" hidden></p>
             </div>
-            <div class="input-group">
-                <label for="download-dir">Download Location</label>
-                <input type="text" id="download-dir" placeholder="C:\Users\YourName\Downloads\GameName">
-            </div>
-            <button class="btn btn-primary" id="fetch-btn" onclick="fetchLinks()">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
-                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                </svg>
-                Fetch Links
-            </button>
-            <div id="fetch-status" class="status-msg hidden"></div>
         </section>
 
-        <!-- Files Section -->
-        <section class="card hidden" id="files-section">
-            <div class="card-header">
-                <div class="step-badge">2</div>
-                <h2>Select Files</h2>
-                <div class="file-controls">
-                    <button class="btn btn-ghost btn-sm" onclick="selectAll()">Select All</button>
-                    <button class="btn btn-ghost btn-sm" onclick="deselectAll()">Deselect All</button>
+        <section class="section" id="files" hidden>
+            <div class="section-head">
+                <span class="section-index">02</span>
+                <h2>Files</h2>
+                <div class="section-tools">
+                    <button class="btn btn-text" id="select-all">All</button>
+                    <button class="btn btn-text" id="select-none">None</button>
                 </div>
             </div>
-            <div class="files-list" id="files-list"></div>
-            <div class="card-footer">
-                <span class="selected-count" id="selected-count">0 files selected</span>
-                <button class="btn btn-primary" id="download-btn" onclick="startDownload()">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                        <polyline points="7 10 12 15 17 10"/>
-                        <line x1="12" y1="15" x2="12" y2="3"/>
-                    </svg>
-                    Start Download
-                </button>
+            <div class="file-list" id="file-list"></div>
+            <div class="actions actions-split">
+                <span class="muted" id="selected-count">0 selected</span>
+                <button class="btn btn-primary" id="download-btn"><span>Start download</span></button>
             </div>
+            <p class="msg" id="files-msg" hidden></p>
         </section>
 
-        <!-- Speed Graph Section -->
-        <section class="card hidden" id="graph-section">
-            <div class="card-header">
-                <div class="step-badge graph-badge">⚡</div>
-                <h2>Download Speed</h2>
-                <div class="graph-stats">
-                    <div class="graph-stat">
-                        <span class="graph-stat-label">Current</span>
-                        <span class="graph-stat-value" id="graph-current">0 B/s</span>
-                    </div>
-                    <div class="graph-stat">
-                        <span class="graph-stat-label">Peak</span>
-                        <span class="graph-stat-value" id="graph-peak">0 B/s</span>
-                    </div>
-                    <div class="graph-stat">
-                        <span class="graph-stat-label">Avg</span>
-                        <span class="graph-stat-value" id="graph-avg">0 B/s</span>
-                    </div>
+        <section class="section" id="transfer" hidden>
+            <div class="section-head">
+                <span class="section-index">03</span>
+                <h2>Transfer</h2>
+                <div class="section-tools">
+                    <button class="btn btn-secondary btn-sm" id="cancel-btn"><span>Cancel all</span></button>
                 </div>
             </div>
-            <div class="graph-container">
-                <canvas id="speed-canvas" width="720" height="180"></canvas>
-            </div>
-        </section>
+            <p class="dest mono" id="transfer-dir"></p>
 
-        <!-- Progress Section -->
-        <section class="card hidden" id="progress-section">
-            <div class="card-header">
-                <div class="step-badge">3</div>
-                <h2>Download Progress</h2>
-                <button class="btn btn-danger btn-sm" id="cancel-btn" onclick="cancelDownload()">Cancel All</button>
+            <div class="stats">
+                <div class="stat"><span class="stat-label">Now</span><span class="stat-value" id="stat-current">0 B/s</span></div>
+                <div class="stat"><span class="stat-label">Peak</span><span class="stat-value" id="stat-peak">0 B/s</span></div>
+                <div class="stat"><span class="stat-label">Average</span><span class="stat-value" id="stat-avg">0 B/s</span></div>
             </div>
+            <div class="graph">
+                <canvas id="speed-canvas"></canvas>
+                <div class="graph-axis mono"><span>2 min</span><span>now</span></div>
+            </div>
+
+            <div class="summary" id="summary" hidden>
+                <span id="summary-text"></span>
+                <button class="btn btn-secondary btn-sm" id="retry-btn" hidden><span>Retry failed</span></button>
+            </div>
+            <p class="msg" id="transfer-msg" hidden></p>
             <div class="progress-list" id="progress-list"></div>
-            <div class="overall-status" id="overall-status"></div>
         </section>
-    </div>
+    </main>
+
+    <footer class="shell footer mono">Running locally on 127.0.0.1:5000</footer>
 
 <script>
-let fetchedFiles = [], currentSessionId = null, progressInterval = null, networkInterval = null, currentPasteUrl = '';
-let speedHistory = [], peakSpeed = 0;
+const $ = id => document.getElementById(id);
+const STORE_SESSION = 'fitgrab.session';
+const STORE_DIR = 'fitgrab.dir';
+const STATE_LABELS = {
+    queued: 'Queued', extracting: 'Getting link', reextracting: 'Refreshing link',
+    downloading: 'Downloading', merging: 'Merging', retrying: 'Retrying',
+    paused_network: 'Waiting for network', completed: 'Done', error: 'Failed', cancelled: 'Cancelled'
+};
+const INDETERMINATE = new Set(['extracting', 'reextracting', 'merging', 'paused_network']);
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+let fetchedFiles = [], pasteUrl = '', sessionId = null, progressTimer = null, graph = null, cancelArmed = null;
+const rows = new Map();
+
+// ─── Helpers ───
+function fmtSpeed(bps) {
+    if (bps >= 1024**3) return (bps/1024**3).toFixed(1) + ' GB/s';
+    if (bps >= 1024**2) return (bps/1024**2).toFixed(1) + ' MB/s';
+    if (bps >= 1024) return (bps/1024).toFixed(1) + ' KB/s';
+    return Math.round(bps) + ' B/s';
+}
+function setText(el, text) { if (el.textContent !== text) el.textContent = text; }
+function storeGet(key) { try { return localStorage.getItem(key); } catch { return null; } }
+function storeSet(key, value) {
+    try { value == null ? localStorage.removeItem(key) : localStorage.setItem(key, value); } catch {}
+}
+function setMsg(el, text, kind = '') {
+    el.textContent = text;
+    el.className = 'msg' + (kind ? ' ' + kind : '');
+    el.hidden = !text;
+}
+function setLoading(btn, loading, label) {
+    const span = btn.querySelector('span');
+    if (!btn.dataset.label) btn.dataset.label = span.textContent;
+    btn.disabled = loading;
+    btn.classList.toggle('is-loading', loading);
+    span.textContent = loading ? label : btn.dataset.label;
+}
+function reveal(section) {
+    if (!section.hidden) return;
+    section.hidden = false;
+    section.classList.remove('reveal');
+    void section.offsetWidth;
+    section.classList.add('reveal');
+}
+function scrollTo(section) {
+    section.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+}
+async function api(path, body) {
+    const opts = body === undefined ? {} : {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    };
+    const r = await fetch(path, opts);
+    return r.json();
+}
 
 // ─── Speed Graph ───
 class SpeedGraph {
@@ -132,299 +159,324 @@ class SpeedGraph {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
         this.data = [];
-        this.max = 120;
-        this.dpr = window.devicePixelRatio || 1;
-        this.resize();
-        window.addEventListener('resize', () => this.resize());
+        this.capacity = 120;
+        this.max = this.targetMax = 512 * 1024;
+        this.t0 = 0;
+        this.raf = null;
+        new ResizeObserver(() => this.resize()).observe(canvas.parentElement);
     }
     resize() {
-        const rect = this.canvas.parentElement.getBoundingClientRect();
-        this.canvas.width = rect.width * this.dpr;
-        this.canvas.height = 180 * this.dpr;
-        this.canvas.style.width = rect.width + 'px';
-        this.canvas.style.height = '180px';
-        this.ctx.scale(this.dpr, this.dpr);
-        this.w = rect.width;
-        this.h = 180;
-        this.draw();
+        const dpr = window.devicePixelRatio || 1;
+        this.w = this.canvas.parentElement.clientWidth;
+        this.h = 160;
+        this.canvas.width = this.w * dpr;
+        this.canvas.height = this.h * dpr;
+        this.canvas.style.height = this.h + 'px';
+        this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        this.draw(1);
     }
-    push(speed) {
-        this.data.push(speed);
-        if (this.data.length > this.max) this.data.shift();
-        this.draw();
+    set(data) {
+        this.data = data.slice(-this.capacity);
+        this.targetMax = Math.max(512 * 1024, ...this.data) * 1.15;
+        this.t0 = performance.now();
+        if (reducedMotion) { this.max = this.targetMax; this.draw(1); }
+        else if (!this.raf) this.tick();
     }
-    draw() {
+    tick() {
+        this.raf = requestAnimationFrame(() => {
+            this.raf = null;
+            const p = Math.min(1, (performance.now() - this.t0) / 1000);
+            this.max += (this.targetMax - this.max) * 0.12;
+            this.draw(p);
+            if (p < 1 || Math.abs(this.targetMax - this.max) > this.targetMax * 0.002) this.tick();
+        });
+    }
+    // p: 0→1 over the second after new data, sliding the line left one step
+    draw(p) {
         const { ctx, w, h, data } = this;
+        if (!w) return;
+        const css = getComputedStyle(document.documentElement);
+        const fg = css.getPropertyValue('--fg').trim();
+        const grid = css.getPropertyValue('--line').trim();
+        const muted = css.getPropertyValue('--fg-3').trim();
+        const pad = { t: 10, b: 10, l: 84 };
+        const pw = w - pad.l, ph = h - pad.t - pad.b;
+
         ctx.clearRect(0, 0, w, h);
-        if (data.length < 2) return;
-        const pad = { t: 8, r: 8, b: 24, l: 56 };
-        const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
-        const maxV = Math.max(...data, 1024 * 100);
-
-        // Grid + labels
-        ctx.strokeStyle = 'rgba(255,255,255,0.04)';
-        ctx.lineWidth = 1;
-        ctx.fillStyle = 'rgba(255,255,255,0.25)';
-        ctx.font = '10px JetBrains Mono';
-        ctx.textAlign = 'right';
-        for (let i = 0; i <= 4; i++) {
-            const y = pad.t + (ph / 4) * i;
-            ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
-            ctx.fillText(fmtSpeed(maxV * (1 - i / 4)), pad.l - 6, y + 4);
+        ctx.font = '12px "Geist Mono", ui-monospace, monospace';
+        ctx.textBaseline = 'middle';
+        for (let i = 0; i <= 2; i++) {
+            const y = Math.round(pad.t + ph * i / 2) + 0.5;
+            ctx.fillStyle = grid;
+            ctx.fillRect(pad.l, y, pw, 1);
+            ctx.fillStyle = muted;
+            ctx.fillText(fmtSpeed(this.max * (1 - i / 2)), 0, y);
         }
 
-        // Gradient fill
-        const grd = ctx.createLinearGradient(0, pad.t, 0, h - pad.b);
-        grd.addColorStop(0, 'rgba(139,92,246,0.25)');
-        grd.addColorStop(1, 'rgba(139,92,246,0)');
-        ctx.beginPath();
-        for (let i = 0; i < data.length; i++) {
-            const x = pad.l + (i / (this.max - 1)) * pw;
-            const y = pad.t + ph * (1 - data[i] / maxV);
-            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-        }
-        const lastX = pad.l + ((data.length - 1) / (this.max - 1)) * pw;
-        ctx.lineTo(lastX, h - pad.b); ctx.lineTo(pad.l, h - pad.b); ctx.closePath();
-        ctx.fillStyle = grd; ctx.fill();
+        const n = data.length;
+        if (n < 2) return;
+        const step = pw / (this.capacity - 1), shift = (1 - p) * step;
+        const pts = data.map((v, i) => [
+            pad.l + pw - (n - 1 - i) * step + shift,
+            pad.t + ph * (1 - Math.min(v / this.max, 1))
+        ]);
+        const trace = () => { ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); };
 
-        // Line
-        ctx.beginPath();
-        for (let i = 0; i < data.length; i++) {
-            const x = pad.l + (i / (this.max - 1)) * pw;
-            const y = pad.t + ph * (1 - data[i] / maxV);
-            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-        }
-        ctx.strokeStyle = '#8b5cf6'; ctx.lineWidth = 2; ctx.stroke();
-
-        // Dot at end
-        const ly = pad.t + ph * (1 - data[data.length - 1] / maxV);
-        ctx.beginPath(); ctx.arc(lastX, ly, 4, 0, Math.PI * 2);
-        ctx.fillStyle = '#a78bfa'; ctx.fill();
-        ctx.beginPath(); ctx.arc(lastX, ly, 6, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(139,92,246,0.4)'; ctx.lineWidth = 2; ctx.stroke();
-
-        // Time label
-        ctx.fillStyle = 'rgba(255,255,255,0.2)';
-        ctx.font = '9px Inter'; ctx.textAlign = 'center';
-        ctx.fillText('2 min ago', pad.l + 20, h - 6);
-        ctx.fillText('now', w - pad.r - 10, h - 6);
+        ctx.save();
+        ctx.beginPath(); ctx.rect(pad.l, 0, pw, h); ctx.clip();
+        trace();
+        ctx.lineTo(pts[n - 1][0], pad.t + ph); ctx.lineTo(pts[0][0], pad.t + ph); ctx.closePath();
+        ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fill();
+        trace();
+        ctx.strokeStyle = fg; ctx.lineWidth = 1.5; ctx.lineJoin = 'round'; ctx.stroke();
+        const [lx, ly] = pts[n - 1];
+        ctx.beginPath(); ctx.arc(lx, ly, 2.5, 0, Math.PI * 2); ctx.fillStyle = fg; ctx.fill();
+        ctx.restore();
     }
 }
 
-let speedGraph = null;
-
-function fmtSpeed(bps) {
-    if (bps >= 1024**3) return (bps/1024**3).toFixed(1) + ' GB/s';
-    if (bps >= 1024**2) return (bps/1024**2).toFixed(1) + ' MB/s';
-    if (bps >= 1024) return (bps/1024).toFixed(1) + ' KB/s';
-    return Math.round(bps) + ' B/s';
-}
-
-// ─── Network Polling ───
+// ─── Network ───
 async function pollNetwork() {
-    try {
-        const r = await fetch('/api/network');
-        const d = await r.json();
-        const dot = document.getElementById('net-dot');
-        const label = document.getElementById('net-label');
-        const speedVal = document.getElementById('net-speed-val');
+    let d = null;
+    try { d = await api('/api/network'); } catch {}
+    const state = !d ? 'server' : d.connected ? 'online' : 'offline';
+    $('net').dataset.state = state;
+    setText($('net-label'), { server: 'Server offline', online: 'Online', offline: 'No connection' }[state]);
+    setText($('net-speed'), d ? d.speed_str : '—');
 
-        dot.className = 'net-dot ' + (d.connected ? 'connected' : 'disconnected');
-        label.textContent = d.connected ? 'Connected' : 'Disconnected';
-        label.className = d.connected ? '' : 'text-red';
-        speedVal.textContent = d.speed_str;
-
-        if (speedGraph && d.history && d.history.length) {
-            const latest = d.history[d.history.length - 1];
-            speedGraph.push(latest.s);
-            peakSpeed = Math.max(peakSpeed, latest.s);
-            const avg = speedGraph.data.reduce((a, b) => a + b, 0) / speedGraph.data.length;
-            document.getElementById('graph-current').textContent = fmtSpeed(latest.s);
-            document.getElementById('graph-peak').textContent = fmtSpeed(peakSpeed);
-            document.getElementById('graph-avg').textContent = fmtSpeed(avg);
-        }
-    } catch (e) {}
+    if (d && graph && !$('transfer').hidden) {
+        graph.set(d.history);
+        const active = d.history.filter(v => v > 0);
+        setText($('stat-current'), fmtSpeed(d.app_speed));
+        setText($('stat-peak'), fmtSpeed(active.length ? Math.max(...active) : 0));
+        setText($('stat-avg'), fmtSpeed(active.length ? active.reduce((a, b) => a + b, 0) / active.length : 0));
+    }
 }
 
 // ─── Fetch Links ───
 async function fetchLinks() {
-    const url = document.getElementById('paste-url').value.trim();
-    const status = document.getElementById('fetch-status');
-    const btn = document.getElementById('fetch-btn');
-    if (!url) { showStatus(status, 'Enter a paste URL', 'error'); return; }
+    const url = $('paste-url').value.trim(), msg = $('source-msg'), btn = $('fetch-btn');
+    if (!url) { setMsg(msg, 'Enter a paste URL.', 'error'); $('paste-url').focus(); return; }
 
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> Fetching & Decrypting...';
-    status.classList.add('hidden');
-
+    setLoading(btn, true, 'Fetching');
+    setMsg(msg, 'A browser window opens briefly to decrypt the paste.');
     try {
-        const r = await fetch('/api/fetch-links', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ paste_url: url })
-        });
-        const d = await r.json();
-        if (d.success) {
-            fetchedFiles = d.files;
-            currentPasteUrl = url;
-            renderFiles();
-            document.getElementById('files-section').classList.remove('hidden');
-            showStatus(status, `Found ${d.files.length} files`, 'success');
-            document.getElementById('files-section').scrollIntoView({ behavior: 'smooth' });
-        } else {
-            showStatus(status, d.error, 'error');
-        }
-    } catch (e) {
-        showStatus(status, 'Network error: ' + e.message, 'error');
+        const d = await api('/api/fetch-links', { paste_url: url });
+        if (!d.success) { setMsg(msg, d.error, 'error'); return; }
+        fetchedFiles = d.files;
+        pasteUrl = url;
+        renderFiles();
+        setMsg(msg, `Found ${d.files.length} file${d.files.length !== 1 ? 's' : ''}.`, 'success');
+        reveal($('files'));
+        scrollTo($('files'));
+    } catch {
+        setMsg(msg, 'Could not reach the server.', 'error');
+    } finally {
+        setLoading(btn, false);
     }
-    btn.disabled = false;
-    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Fetch Links';
 }
 
 function renderFiles() {
-    const c = document.getElementById('files-list');
-    c.innerHTML = '';
+    const list = $('file-list');
+    list.replaceChildren();
     fetchedFiles.forEach((f, i) => {
-        const el = document.createElement('div');
-        el.className = 'file-item';
-        el.innerHTML = `
-            <label class="file-checkbox">
-                <input type="checkbox" checked data-index="${f.index}" onchange="updateCount()">
-                <span class="checkmark"></span>
-            </label>
-            <div class="file-info">
-                <span class="file-name">${esc(f.filename)}</span>
-                <span class="file-part">Part ${String(i+1).padStart(2,'0')}</span>
-            </div>`;
-        c.appendChild(el);
+        const row = document.createElement('label');
+        row.className = 'file-row';
+        row.style.setProperty('--i', Math.min(i, 14));
+        row.innerHTML = `
+            <input type="checkbox" checked data-index="${f.index}">
+            <span class="check" aria-hidden="true"></span>
+            <span class="file-name"></span>
+            <span class="file-part mono">${String(i + 1).padStart(2, '0')}</span>`;
+        row.querySelector('.file-name').textContent = f.filename;
+        list.appendChild(row);
     });
     updateCount();
 }
 function updateCount() {
-    const n = document.querySelectorAll('#files-list input:checked').length;
-    document.getElementById('selected-count').textContent = `${n} file${n!==1?'s':''} selected`;
+    const n = document.querySelectorAll('#file-list input:checked').length;
+    setText($('selected-count'), `${n} of ${fetchedFiles.length} selected`);
 }
-function selectAll() { document.querySelectorAll('#files-list input').forEach(c=>c.checked=true); updateCount(); }
-function deselectAll() { document.querySelectorAll('#files-list input').forEach(c=>c.checked=false); updateCount(); }
+function selectAll(checked) {
+    document.querySelectorAll('#file-list input').forEach(c => c.checked = checked);
+    updateCount();
+}
 
 // ─── Start Download ───
 async function startDownload() {
-    const dir = document.getElementById('download-dir').value.trim();
-    if (!dir) { alert('Specify download location'); return; }
-    const sel = [];
-    document.querySelectorAll('#files-list input:checked').forEach(c => sel.push(parseInt(c.dataset.index)));
-    if (!sel.length) { alert('Select at least one file'); return; }
+    const dirInput = $('download-dir'), msg = $('files-msg'), btn = $('download-btn');
+    const dir = dirInput.value.trim();
+    if (!dir) { setMsg(msg, 'Set a folder under Source → Save to.', 'error'); dirInput.focus(); return; }
+    const selected = [...document.querySelectorAll('#file-list input:checked')].map(c => +c.dataset.index);
+    if (!selected.length) { setMsg(msg, 'Select at least one file.', 'error'); return; }
 
-    const btn = document.getElementById('download-btn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> Starting...';
-
+    setLoading(btn, true, 'Starting');
     try {
-        const r = await fetch('/api/start-download', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ paste_url: currentPasteUrl, selected: sel, download_dir: dir })
-        });
-        const d = await r.json();
-        if (d.success) {
-            currentSessionId = d.session_id;
-            document.getElementById('graph-section').classList.remove('hidden');
-            document.getElementById('progress-section').classList.remove('hidden');
-            if (!speedGraph) speedGraph = new SpeedGraph(document.getElementById('speed-canvas'));
-            peakSpeed = 0;
-            startPolling();
-            document.getElementById('graph-section').scrollIntoView({ behavior: 'smooth' });
-        } else { alert(d.error); }
-    } catch (e) { alert(e.message); }
-
-    btn.disabled = false;
-    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Start Download';
+        const d = await api('/api/start-download', { paste_url: pasteUrl, selected, download_dir: dir });
+        if (!d.success) { setMsg(msg, d.error, 'error'); return; }
+        setMsg(msg, '');
+        storeSet(STORE_DIR, dir);
+        attach(d.session_id, true);
+    } catch {
+        setMsg(msg, 'Could not reach the server.', 'error');
+    } finally {
+        setLoading(btn, false);
+    }
 }
 
+function attach(sid, scroll) {
+    sessionId = sid;
+    storeSet(STORE_SESSION, sid);
+    rows.clear();
+    $('progress-list').replaceChildren();
+    $('summary').hidden = true;
+    setMsg($('transfer-msg'), '');
+    reveal($('transfer'));
+    if (!graph) graph = new SpeedGraph($('speed-canvas'));
+    if (scroll) scrollTo($('transfer'));
+    startPolling();
+}
+
+// ─── Progress ───
 function startPolling() {
-    if (progressInterval) clearInterval(progressInterval);
-    if (!networkInterval) networkInterval = setInterval(pollNetwork, 1000);
-    progressInterval = setInterval(pollProgress, 800);
+    clearInterval(progressTimer);
+    progressTimer = setInterval(pollProgress, 800);
     pollProgress();
 }
 
 async function pollProgress() {
-    if (!currentSessionId) return;
-    try {
-        const r = await fetch(`/api/progress/${currentSessionId}`);
-        const d = await r.json();
-        if (!d.success) return;
-        renderProgress(d);
-        if (d.overall_status === 'completed') {
-            clearInterval(progressInterval);
-            document.getElementById('cancel-btn').classList.add('hidden');
-            document.getElementById('overall-status').innerHTML = `
-                <div class="status-complete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="complete-icon">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-                </svg> All downloads completed!</div>`;
-        }
-    } catch (e) {}
+    if (!sessionId) return;
+    let d;
+    try { d = await api(`/api/progress/${sessionId}`); } catch { return; }
+    if (!d.success) { clearInterval(progressTimer); storeSet(STORE_SESSION, null); return; }
+    renderProgress(d);
+    if (d.overall_status !== 'running') clearInterval(progressTimer);
 }
 
-function renderProgress(data) {
-    const c = document.getElementById('progress-list');
-    c.innerHTML = '';
-    data.files.forEach(f => {
-        if (!f.selected) return;
-        const icons = {
-            queued: '⏳', extracting: '🔍', downloading: '⬇️', completed: '✅',
-            error: '❌', cancelled: '🚫', retrying: '🔄', paused_network: '📡',
-            merging: '🔗', reconnecting: '🔌'
-        };
-        const labels = {
-            queued: 'Queued', extracting: 'Extracting URL...', downloading: 'Downloading',
-            completed: 'Completed', error: 'Error', cancelled: 'Cancelled',
-            retrying: 'Resuming...', paused_network: 'Waiting for network...',
-            merging: 'Merging segments...', reconnecting: 'Reconnecting...'
-        };
-        const icon = icons[f.status] || '⏳';
-        const label = labels[f.status] || f.status;
-        const attemptBadge = f.attempt > 1 ? `<span class="attempt-badge">Attempt ${f.attempt}/${5}</span>` : '';
-        const segInfo = f.segments_total > 0 ? `<span class="seg-info">${f.segments_done}/${f.segments_total} segments</span>` : '';
+function createRow(f) {
+    const el = document.createElement('div');
+    el.className = 'row';
+    el.innerHTML = `
+        <div class="row-top"><span class="row-name"></span><span class="row-state"></span></div>
+        <div class="bar"><i></i></div>
+        <div class="row-meta mono"><span data-k="size"></span><span data-k="speed"></span><span data-k="eta"></span><span data-k="pct"></span></div>
+        <div class="row-error mono" hidden></div>`;
+    el.querySelector('.row-name').textContent = f.filename;
+    const q = s => el.querySelector(s);
+    return {
+        el, state: q('.row-state'), bar: q('.bar'), fill: q('.bar i'), error: q('.row-error'),
+        size: q('[data-k=size]'), speed: q('[data-k=speed]'), eta: q('[data-k=eta]'), pct: q('[data-k=pct]')
+    };
+}
 
-        const el = document.createElement('div');
-        el.className = `progress-item status-${f.status}`;
-        el.innerHTML = `
-            <div class="progress-header">
-                <span class="progress-filename">${esc(f.filename)}</span>
-                <div class="progress-meta">${attemptBadge}${segInfo}<span class="progress-status-label">${icon} ${label}</span></div>
-            </div>
-            <div class="progress-bar-container"><div class="progress-bar" style="width:${f.progress}%"></div></div>
-            <div class="progress-details">
-                <span>${f.downloaded_display} / ${f.total_display}</span>
-                <span>${f.speed_str}</span>
-                <span>ETA ${f.eta}</span>
-                <span>${f.progress}%</span>
-            </div>
-            ${f.error ? `<div class="progress-error">${esc(f.error)}</div>` : ''}`;
-        c.appendChild(el);
+function updateRow(r, f, maxAttempts) {
+    r.el.dataset.state = f.status;
+    let label = f.note || STATE_LABELS[f.status] || f.status;
+    if (f.status === 'downloading' && f.segments_total) label += ` · ${f.segments_done}/${f.segments_total}`;
+    if (f.attempt > 1 && !['completed', 'error', 'cancelled'].includes(f.status)) label += ` · try ${f.attempt}/${maxAttempts}`;
+    setText(r.state, label);
+
+    r.bar.classList.toggle('indeterminate', INDETERMINATE.has(f.status));
+    r.fill.style.transform = `scaleX(${f.progress / 100})`;
+
+    const active = f.status === 'downloading';
+    setText(r.size, f.total_bytes ? `${f.downloaded_display} / ${f.total_display}` : (f.downloaded_bytes ? f.downloaded_display : '—'));
+    setText(r.speed, active ? f.speed_str : '');
+    setText(r.eta, active && f.eta !== '--:--' ? `ETA ${f.eta}` : '');
+    setText(r.pct, f.progress ? `${f.progress}%` : '');
+    setText(r.error, f.error);
+    r.error.hidden = !f.error;
+}
+
+function renderProgress(d) {
+    setText($('transfer-dir'), d.download_dir);
+    d.files.forEach(f => {
+        let row = rows.get(f.index);
+        if (!row) {
+            row = createRow(f);
+            row.el.style.setProperty('--i', Math.min(rows.size, 14));
+            rows.set(f.index, row);
+            $('progress-list').appendChild(row.el);
+        }
+        updateRow(row, f, d.max_attempts);
     });
+
+    const running = d.overall_status === 'running';
+    $('cancel-btn').hidden = !running;
+    if (running) { $('summary').hidden = true; return; }
+
+    const s = d.summary;
+    const parts = [`${s.completed} of ${s.total} downloaded`];
+    if (s.failed) parts.push(`${s.failed} failed`);
+    if (s.cancelled) parts.push(`${s.cancelled} cancelled`);
+    setText($('summary-text'), (d.overall_status === 'cancelled' ? 'Cancelled — ' : 'Finished — ') + parts.join(', ') + '.');
+    $('summary').dataset.tone = s.failed ? 'error' : s.completed === s.total ? 'ok' : '';
+    $('retry-btn').hidden = !(s.failed + s.cancelled);
+    reveal($('summary'));
+}
+
+// ─── Cancel / Retry ───
+function disarmCancel() {
+    clearTimeout(cancelArmed);
+    cancelArmed = null;
+    $('cancel-btn').classList.remove('armed');
+    $('cancel-btn').querySelector('span').textContent = 'Cancel all';
 }
 
 async function cancelDownload() {
-    if (!currentSessionId || !confirm('Cancel all downloads?')) return;
+    const btn = $('cancel-btn');
+    if (!sessionId) return;
+    if (!cancelArmed) {
+        btn.classList.add('armed');
+        btn.querySelector('span').textContent = 'Confirm cancel';
+        cancelArmed = setTimeout(disarmCancel, 3000);
+        return;
+    }
+    disarmCancel();
+    try { await api(`/api/cancel/${sessionId}`, {}); } catch {}
+    pollProgress();
+}
+
+async function retryFailed() {
+    const btn = $('retry-btn'), msg = $('transfer-msg');
+    setLoading(btn, true, 'Retrying');
     try {
-        await fetch(`/api/cancel/${currentSessionId}`, { method: 'POST' });
-        clearInterval(progressInterval);
-        document.getElementById('overall-status').innerHTML = '<div class="status-cancelled">Downloads cancelled</div>';
-    } catch (e) {}
+        const d = await api(`/api/retry/${sessionId}`, {});
+        if (!d.success) { setMsg(msg, d.error, 'error'); return; }
+        setMsg(msg, '');
+        $('summary').hidden = true;
+        startPolling();
+    } catch {
+        setMsg(msg, 'Could not reach the server.', 'error');
+    } finally {
+        setLoading(btn, false);
+    }
 }
 
-function showStatus(el, msg, type) {
-    el.textContent = msg;
-    el.className = `status-msg status-${type}`;
-}
-function esc(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+// ─── Init ───
+$('fetch-btn').addEventListener('click', fetchLinks);
+$('paste-url').addEventListener('keydown', e => { if (e.key === 'Enter') fetchLinks(); });
+$('download-btn').addEventListener('click', startDownload);
+$('select-all').addEventListener('click', () => selectAll(true));
+$('select-none').addEventListener('click', () => selectAll(false));
+$('file-list').addEventListener('change', updateCount);
+$('cancel-btn').addEventListener('click', cancelDownload);
+$('retry-btn').addEventListener('click', retryFailed);
 
-// Start network monitoring immediately
-document.addEventListener('DOMContentLoaded', () => {
-    networkInterval = setInterval(pollNetwork, 1000);
-    pollNetwork();
-    document.getElementById('paste-url').addEventListener('keydown', e => { if (e.key === 'Enter') fetchLinks(); });
-});
+$('download-dir').value = storeGet(STORE_DIR) || '';
+setInterval(pollNetwork, 1000);
+pollNetwork();
+
+// Reattach to the last session after a page refresh
+(async () => {
+    const saved = storeGet(STORE_SESSION);
+    if (!saved) return;
+    try {
+        const d = await api(`/api/progress/${saved}`);
+        if (d.success) attach(saved, false);
+        else storeSet(STORE_SESSION, null);
+    } catch {}
+})();
 </script>
 </body>
 </html>
