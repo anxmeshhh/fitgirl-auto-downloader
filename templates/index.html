@@ -287,11 +287,57 @@ function renderFiles() {
             <input type="checkbox" checked data-index="${f.index}">
             <span class="check" aria-hidden="true"></span>
             <span class="file-name"></span>
+            <span class="file-status mono"></span>
             <span class="file-part mono">${String(i + 1).padStart(2, '0')}</span>`;
         row.querySelector('.file-name').textContent = f.filename;
         list.appendChild(row);
     });
+    autoUnchecked.clear();
     updateCount();
+    scanFolder();
+}
+
+// ─── Folder lookup: mark parts that are already on disk ───
+const autoUnchecked = new Set();
+let scanTimer = null, scanSeq = 0;
+
+function scheduleScan() {
+    clearTimeout(scanTimer);
+    scanTimer = setTimeout(scanFolder, 400);
+}
+
+async function scanFolder() {
+    if (!fetchedFiles.length) return;
+    const seq = ++scanSeq;
+    let d;
+    try {
+        d = await api('/api/scan', { paste_url: pasteUrl, download_dir: $('download-dir').value.trim() });
+    } catch { return; }
+    if (seq !== scanSeq || !d.success) return;
+
+    const byIndex = new Map(d.files.map(f => [f.index, f]));
+    let done = 0, partial = 0;
+    document.querySelectorAll('#file-list .file-row').forEach(row => {
+        const box = row.querySelector('input'), idx = +box.dataset.index;
+        const f = byIndex.get(idx), state = f ? f.state : 'missing';
+        row.dataset.disk = state;
+        setText(row.querySelector('.file-status'),
+            state === 'done' ? 'Downloaded' : state === 'partial' ? `Partial · ${f.size_display}` : '');
+        if (state === 'done') {
+            done++;
+            if (box.checked) { box.checked = false; autoUnchecked.add(idx); }
+        } else {
+            if (state === 'partial') partial++;
+            // Folder changed and this one isn't done there: undo our own uncheck.
+            if (autoUnchecked.delete(idx)) box.checked = true;
+        }
+    });
+    updateCount();
+
+    const parts = [];
+    if (done) parts.push(`${done} already downloaded — unchecked`);
+    if (partial) parts.push(`${partial} partly downloaded — will resume`);
+    setMsg($('files-msg'), parts.length ? parts.join(' · ') + '.' : '');
 }
 function updateCount() {
     const n = document.querySelectorAll('#file-list input:checked').length;
@@ -459,7 +505,8 @@ $('paste-url').addEventListener('keydown', e => { if (e.key === 'Enter') fetchLi
 $('download-btn').addEventListener('click', startDownload);
 $('select-all').addEventListener('click', () => selectAll(true));
 $('select-none').addEventListener('click', () => selectAll(false));
-$('file-list').addEventListener('change', updateCount);
+$('file-list').addEventListener('change', e => { autoUnchecked.delete(+e.target.dataset.index); updateCount(); });
+$('download-dir').addEventListener('input', scheduleScan);
 $('cancel-btn').addEventListener('click', cancelDownload);
 $('retry-btn').addEventListener('click', retryFailed);
 

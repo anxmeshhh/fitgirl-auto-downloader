@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import time
 import queue
 import logging
@@ -71,6 +72,42 @@ def install_ad_tab_closer(context, main_page):
             except Exception:
                 pass
     context.on("page", _close_unwanted)
+
+
+_DIRECT_HOST_RE = re.compile(r"^https?://dl\.fuckingfast\.co/")
+
+
+def block_direct_downloads(context):
+    """After the /go POST, htmx follows the HX-Redirect itself and points the
+    tab at dl.fuckingfast.co. We only need the header (httpx does the real
+    download), and leaving that navigation in flight makes the browser pull a
+    duplicate copy of the file AND aborts the next page.goto with
+    net::ERR_ABORTED. A 204 reply makes Chromium drop the navigation and
+    stay on the current page."""
+    context.route(_DIRECT_HOST_RE, lambda route: route.fulfill(status=204, body=""))
+
+
+def goto_with_retry(page, url, attempts=3, timeout=30000):
+    """page.goto that survives net::ERR_ABORTED, which happens when a
+    navigation left over from the previous page (an htmx redirect or an ad
+    script redirecting the main tab) is still pending. Before each try, park
+    the tab on about:blank to cancel whatever was in flight."""
+    last_exc = None
+    for attempt in range(1, attempts + 1):
+        try:
+            page.goto("about:blank", wait_until="commit", timeout=5000)
+        except Exception:
+            pass
+        try:
+            return page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+        except Exception as e:
+            last_exc = e
+            msg = str(e)
+            if not any(s in msg for s in ("ERR_ABORTED", "Timeout", "ERR_CONNECTION", "ERR_NETWORK", "ERR_TIMED_OUT")):
+                raise
+            log.info("goto %s failed (attempt %d/%d): %s", url, attempt, attempts, msg.splitlines()[0])
+            page.wait_for_timeout(1000 * attempt)
+    raise last_exc
 
 
 # ─── Network Monitor ───
@@ -218,7 +255,7 @@ def extract_links_from_paste(paste_url):
     with sync_playwright() as p, browser_context(p) as context:
         page = context.new_page()
         install_ad_tab_closer(context, page)
-        page.goto(paste_url, wait_until="domcontentloaded", timeout=30000)
+        goto_with_retry(page, paste_url)
         page.wait_for_timeout(1000)
         for a in page.query_selector_all("a"):
             href = a.get_attribute("href")
@@ -248,7 +285,7 @@ def extract_direct_url_page(browser_page, fuckingfast_url):
 
     browser_page.on("response", on_response)
     try:
-        browser_page.goto(fuckingfast_url, wait_until="domcontentloaded", timeout=30000)
+        goto_with_retry(browser_page, fuckingfast_url)
         browser_page.wait_for_timeout(500)
 
         body = browser_page.inner_text("body")
@@ -326,6 +363,105 @@ def _segment_paths(filepath, n=NUM_SEGMENTS):
 def _already_complete(filepath, total):
     return (os.path.isfile(filepath) and os.path.getsize(filepath) == total
             and not any(os.path.exists(p) for p in _segment_paths(filepath)))
+
+
+# ─── Completed-files manifest ───
+# A file on disk under its final name isn't proof it finished: single-stream
+# downloads write there directly. So every finished file is recorded with its
+# size in a small JSON file in the download folder, which lets a restarted
+# session skip finished parts instantly, before any browser extraction.
+MANIFEST_NAME = ".fitgrab-complete.json"
+_manifest_lock = threading.Lock()
+
+
+def _load_manifest(download_dir):
+    try:
+        with open(os.path.join(download_dir, MANIFEST_NAME), encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _mark_complete(filepath, size):
+    download_dir, name = os.path.split(filepath)
+    path = os.path.join(download_dir, MANIFEST_NAME)
+    with _manifest_lock:
+        data = _load_manifest(download_dir)
+        data[name] = size
+        try:
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=1)
+            os.replace(tmp, path)
+        except OSError:
+            log.warning("Could not update %s", path, exc_info=True)
+
+
+def recorded_complete_size(download_dir, filename, manifest=None):
+    """Size of the file if the manifest says it finished AND it's still on disk
+    at that exact size; otherwise None (missing, truncated, or never finished)."""
+    manifest = _load_manifest(download_dir) if manifest is None else manifest
+    size = manifest.get(filename)
+    if isinstance(size, int) and size > 0 and _already_complete(os.path.join(download_dir, filename), size):
+        return size
+    return None
+
+
+_PART_SUFFIX_RE = re.compile(r'\.part\d+\.rar$', re.IGNORECASE)
+
+
+def scan_folder(download_dir, filenames):
+    """Look in the download folder and classify each file:
+      done     — finished (in the manifest at the recorded size, or matches the
+                 full-part size of its RAR set; see below)
+      partial  — some bytes on disk (final file or .seg pieces), not finished
+      missing  — nothing on disk
+    Files downloaded before the manifest existed aren't in it. For those, use
+    the fact that every part of a split RAR set is the same size except the
+    last: if two or more parts in a set share a size, that size is the full
+    part size, and any part at exactly that size is finished. (The last part,
+    which is smaller, gets verified against the server when it's downloaded.)
+    Returns {filename: (state, bytes_on_disk)}."""
+    result = {}
+    if not download_dir or not os.path.isdir(download_dir):
+        return {name: ('missing', 0) for name in filenames}
+
+    manifest = _load_manifest(download_dir)
+    on_disk = {}
+    for name in filenames:
+        path = os.path.join(download_dir, name)
+        size = os.path.getsize(path) if os.path.isfile(path) else 0
+        segs = [p for p in _segment_paths(path) if os.path.isfile(p)]
+        on_disk[name] = (size, segs, size + sum(os.path.getsize(p) for p in segs))
+
+    # Most common size per RAR set, counting only whole files with no leftover segments.
+    sizes_by_set = {}
+    for name, (size, segs, _) in on_disk.items():
+        if size and not segs and _PART_SUFFIX_RE.search(name):
+            sizes_by_set.setdefault(_PART_SUFFIX_RE.sub('', name), []).append(size)
+    full_part_size = {}
+    for key, sizes in sizes_by_set.items():
+        common = max(set(sizes), key=sizes.count)
+        if sizes.count(common) >= 2:
+            full_part_size[key] = common
+
+    for name, (size, segs, total_bytes) in on_disk.items():
+        if recorded_complete_size(download_dir, name, manifest):
+            result[name] = ('done', size)
+        elif (size and not segs and _PART_SUFFIX_RE.search(name)
+              and full_part_size.get(_PART_SUFFIX_RE.sub('', name)) == size):
+            result[name] = ('done', size)
+        elif total_bytes:
+            result[name] = ('partial', total_bytes)
+        else:
+            result[name] = ('missing', 0)
+    return result
+
+
+def _mark_skipped(file_info, size):
+    file_info.update(status='completed', progress=100, downloaded_bytes=size, total_bytes=size,
+                     eta='0:00', speed=0, speed_str='', error='', note='Already downloaded')
 
 
 def _probe(url):
@@ -470,8 +606,8 @@ def download_file(file_info, filepath, session, refresh_url):
             file_info['total_bytes'] = total
 
             if total and _already_complete(filepath, total):
-                file_info.update(status='completed', progress=100, downloaded_bytes=total,
-                                 eta='0:00', speed_str='', note='Already downloaded')
+                _mark_skipped(file_info, total)
+                _mark_complete(filepath, total)  # downloaded before the manifest existed
                 return
 
             if ranges_ok and total > SEGMENT_MIN_FILE:
@@ -480,6 +616,7 @@ def download_file(file_info, filepath, session, refresh_url):
                 _download_single_resume(url, filepath, file_info, session)
 
             file_info.update(status='completed', progress=100, eta='0:00', speed=0, speed_str='')
+            _mark_complete(filepath, os.path.getsize(filepath))
             return
 
         except Exception as e:
@@ -520,6 +657,26 @@ def download_worker(session_id, indices):
     session = download_sessions[session_id]
     files = session['files']
     download_dir = session['download_dir']
+
+    # Auto-lookup: parts finished in an earlier (stopped) run are skipped
+    # straight away, so they never cost a browser extraction or a request.
+    scan = scan_folder(download_dir, [f['filename'] for f in files])
+    pending = []
+    for idx in indices:
+        name = files[idx]['filename']
+        state, size = scan[name]
+        if state == 'done':
+            _mark_skipped(files[idx], size)
+            _mark_complete(os.path.join(download_dir, name), size)
+        else:
+            pending.append(idx)
+    if len(pending) < len(indices):
+        log.info("Session %s: %d already downloaded, skipping", session_id, len(indices) - len(pending))
+    indices = pending
+    if not indices:
+        session['overall_status'] = 'finished'
+        log.info("Session %s: everything was already downloaded", session_id)
+        return
     log.info("Session %s: %d files -> %s", session_id, len(indices), download_dir)
 
     jobs = queue.Queue()
@@ -531,14 +688,23 @@ def download_worker(session_id, indices):
             requested.add(idx)
             jobs.put(idx)
 
-    def extract_one(page, fi):
+    def extract_one(page, fi, attempts=3):
         fi['status'] = 'extracting'
-        try:
-            direct_url, filesize = extract_direct_url_page(page, fi['url'])
-        except Exception as e:
-            log.warning("Extract failed for %s: %s", fi['filename'], e)
-            fi.update(status='error', error=str(e))
-            return
+        direct_url = filesize = None
+        for attempt in range(1, attempts + 1):
+            if session.get('cancelled'):
+                return
+            try:
+                direct_url, filesize = extract_direct_url_page(page, fi['url'])
+            except Exception as e:
+                err = str(e).splitlines()[0]
+                log.warning("Extract failed for %s (attempt %d/%d): %s", fi['filename'], attempt, attempts, err)
+                if attempt == attempts:
+                    fi.update(status='error', error=f"Could not open file page: {err}")
+                    return
+            if direct_url:
+                break
+            page.wait_for_timeout(1500 * attempt)
         if direct_url:
             fi.update(direct_url=direct_url, status='queued')
             if filesize:
@@ -551,6 +717,7 @@ def download_worker(session_id, indices):
     def extractor_loop():
         try:
             with sync_playwright() as p, browser_context(p) as context:
+                block_direct_downloads(context)
                 page = context.new_page()
                 install_ad_tab_closer(context, page)
                 while not session.get('cancelled'):
@@ -660,6 +827,24 @@ def api_fetch_links():
     except Exception as e:
         log.exception("Fetching paste failed")
         return jsonify(success=False, error=str(e))
+
+
+@app.route('/api/scan', methods=['POST'])
+def api_scan():
+    """Which of the fetched files are already in the chosen folder."""
+    data = request.get_json(silent=True) or {}
+    paste_url = str(data.get('paste_url', '')).strip()
+    dl_dir = os.path.expanduser(str(data.get('download_dir', '')).strip())
+    if paste_url not in fetch_cache:
+        return jsonify(success=False, error="Fetch links first")
+    if not dl_dir or not os.path.isabs(dl_dir):
+        return jsonify(success=True, files=[])
+    entries = fetch_cache[paste_url]
+    scan = scan_folder(dl_dir, [f['filename'] for f in entries])
+    return jsonify(success=True, files=[
+        {'index': f['index'], 'state': scan[f['filename']][0],
+         'bytes': scan[f['filename']][1], 'size_display': fmt_size(scan[f['filename']][1])}
+        for f in entries])
 
 
 @app.route('/api/start-download', methods=['POST'])

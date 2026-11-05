@@ -144,6 +144,64 @@ def test_skips_file_already_downloaded(server, tmp_path):
     assert fi["note"] == "Already downloaded"
 
 
+def test_completed_download_is_recorded(server, tmp_path):
+    out = tmp_path / "file.bin"
+    run(new_file_info(server), out)
+    assert fg.recorded_complete_size(str(tmp_path), "file.bin") == len(PAYLOAD)
+
+
+def test_manifest_rejects_partial_or_missing_files(tmp_path):
+    fg._mark_complete(str(tmp_path / "a.rar"), 100)
+    (tmp_path / "a.rar").write_bytes(b"x" * 40)  # truncated after being recorded
+    assert fg.recorded_complete_size(str(tmp_path), "a.rar") is None
+    assert fg.recorded_complete_size(str(tmp_path), "never.rar") is None
+    (tmp_path / "a.rar").write_bytes(b"x" * 100)
+    assert fg.recorded_complete_size(str(tmp_path), "a.rar") == 100
+
+
+def test_scan_folder_detects_legacy_finished_parts(tmp_path):
+    full = b"x" * 100
+    (tmp_path / "G.part001.rar").write_bytes(full)
+    (tmp_path / "G.part002.rar").write_bytes(full)
+    (tmp_path / "G.part003.rar").write_bytes(b"x" * 30)       # interrupted single-stream
+    (tmp_path / "G.part004.rar.seg0").write_bytes(b"x" * 10)  # interrupted multi-segment
+    names = [f"G.part00{i}.rar" for i in range(1, 6)]
+    scan = fg.scan_folder(str(tmp_path), names)
+    assert scan["G.part001.rar"] == ("done", 100)
+    assert scan["G.part002.rar"] == ("done", 100)
+    assert scan["G.part003.rar"] == ("partial", 30)
+    assert scan["G.part004.rar"] == ("partial", 10)
+    assert scan["G.part005.rar"] == ("missing", 0)
+
+
+def test_scan_folder_single_unrecorded_part_is_not_trusted(tmp_path):
+    (tmp_path / "G.part1.rar").write_bytes(b"x" * 100)
+    assert fg.scan_folder(str(tmp_path), ["G.part1.rar"])["G.part1.rar"][0] == "partial"
+    fg._mark_complete(str(tmp_path / "G.part1.rar"), 100)
+    assert fg.scan_folder(str(tmp_path), ["G.part1.rar"])["G.part1.rar"] == ("done", 100)
+
+
+def test_scan_endpoint(tmp_path):
+    fg.fetch_cache["paste-scan"] = [{"index": 0, "url": "u", "filename": "a.rar"}]
+    fg._mark_complete(str(tmp_path / "a.rar"), 5)
+    (tmp_path / "a.rar").write_bytes(b"12345")
+    r = fg.app.test_client().post("/api/scan", json={"paste_url": "paste-scan", "download_dir": str(tmp_path)})
+    assert r.get_json()["files"][0]["state"] == "done"
+
+
+def test_worker_skips_finished_parts_without_browser(tmp_path, monkeypatch):
+    (tmp_path / "p1.rar").write_bytes(b"x" * 50)
+    fg._mark_complete(str(tmp_path / "p1.rar"), 50)
+    monkeypatch.setattr(fg, "sync_playwright", lambda: pytest.fail("browser should not launch"))
+    files = [{"url": "u", "filename": "p1.rar", "selected": True, "status": "queued", "progress": 0,
+              "downloaded_bytes": 0, "total_bytes": 0, "error": "", "note": ""}]
+    fg.download_sessions["t"] = {"files": files, "download_dir": str(tmp_path),
+                                 "overall_status": "running", "cancelled": False}
+    fg.download_worker("t", [0])
+    assert files[0]["status"] == "completed" and files[0]["note"] == "Already downloaded"
+    assert fg.download_sessions.pop("t")["overall_status"] == "finished"
+
+
 def test_single_stream_when_ranges_unsupported(server, tmp_path):
     Handler.honor_ranges = False
     out = tmp_path / "file.bin"
